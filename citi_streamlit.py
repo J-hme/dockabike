@@ -97,5 +97,9 @@ st.write(y_start)
 st.write('Chance of your stop being empty (-1) or full (+1): ')
 st.write(y_stop)
 
+map_data = pd.DataFrame(
+    pd.np.random.randn(1000, 2) / [50, 50] + [37.76, -122.4],
+    columns=['lat', 'lon'])
 
+st.map(map_data)
 
