@@ -85,7 +85,8 @@ X_stop = result.reindex(['Month', 'Day', 'Hour', 'Weekday', 'station_id', 'tmpf'
 
 
 # model
-filename = 'C:/Users/javad/Documents/Python Scripts/git_folder/final_prediction2.joblib'
+#filename = 'C:/Users/javad/Documents/Python Scripts/git_folder/final_prediction2.joblib'
+filename = 'final_prediction2.joblib'
 loaded_model = joblib.load(filename)
 y_start = loaded_model.predict(X_start)
 y_stop = loaded_model.predict(X_stop)
