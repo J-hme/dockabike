@@ -35,24 +35,32 @@ stations = pd.DataFrame.from_dict(stations)
 #web app
 
 st.write("""
-# Dock Right
+# Dock Right NY!
 """)
 #st.line_chart(df['riderCount'])
 start_station = st.selectbox(
     'Select Start Station',
      stations['station_name'])
-'You selected: ', start_station
-start_station = stations.loc[stations['station_name'] == 'start_station']
+start_station = stations.loc[stations['station_name'] == start_station]
 start_station = start_station.astype({'station_id': int})
+start_station_id = str(start_station['station_id'].to_list()[0])
+start_station_status = df_station_status['data'][0]
+start_station_status = next(item for item in start_station_status if item['station_id'] == start_station_id)
+'Pick up station has: ', start_station_status['num_bikes_available'], 'free bikes. Here is a list of suggested close by stations:'
 
 stop_station = st.selectbox(
     'Select Stop Station',
      stations['station_name'])
-
-'You selected: ', stop_station
-
-stop_station = stations.loc[stations['station_name'] == 'stop_station']
+stop_station = stations.loc[stations['station_name'] == stop_station]
 stop_station = stop_station.astype({'station_id': int})
+stop_station_id = str(stop_station['station_id'].to_list()[0])
+stop_station_status = df_station_status['data'][0]
+stop_station_status = next(item for item in stop_station_status if item['station_id'] == stop_station_id)
+'Drop off station has: ', stop_station_status['num_docks_available'], 'free docks'
+
+
+map_data = pd.concat([start_station[['lat', 'lon']], stop_station[['lat', 'lon']]])
+st.map(map_data, 13)
 
 
 
@@ -96,10 +104,9 @@ st.write(y_start)
 
 st.write('Chance of your stop being empty (-1) or full (+1): ')
 st.write(y_stop)
+#40.7128° N, 74.0060
 
-map_data = pd.DataFrame(
-    pd.np.random.randn(1000, 2) / [50, 50] + [37.76, -122.4],
-    columns=['lat', 'lon'])
-
-st.map(map_data)
+#map_data = pd.DataFrame([[lat_, lon_start]], columns = ['lat', 'lon'])
+    # pd.np.random.randn(1000, 2) / [50, 50] + [40.71, -74.00],
+    # columns=['lat', 'lon'])
 
