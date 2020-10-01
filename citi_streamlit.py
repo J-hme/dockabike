@@ -11,24 +11,25 @@ from pytz import timezone
 # # Current date time in local system
 # date_time_now = datetime.now()
 #
+@st.cache
+def load_data():
+    # citibike
+    df_sys_info = pd.read_json('https://gbfs.citibikenyc.com/gbfs/en/system_information.json')
+    df_station_information = pd.read_json('https://gbfs.citibikenyc.com/gbfs/en/station_information.json') #capacity, name
+    df_station_status = pd.read_json('https://gbfs.citibikenyc.com/gbfs/en/station_status.json') # online # available
 
-# citibike
-df_sys_info = pd.read_json('https://gbfs.citibikenyc.com/gbfs/en/system_information.json')
-df_station_information = pd.read_json('https://gbfs.citibikenyc.com/gbfs/en/station_information.json') #capacity, name
-df_station_status = pd.read_json('https://gbfs.citibikenyc.com/gbfs/en/station_status.json') # online # available
-
-station_iter = df_station_information['data'][0]
-stations = []
-for j in range(len(station_iter)):
-    zipped = zip(['station_name', 'station_id', 'lat', 'lon', 'capacity'], [df_station_information['data'][0][j]['name'],
-                df_station_information['data'][0][j]['station_id'],
-                df_station_information['data'][0][j]['lat'],
-                df_station_information['data'][0][j]['lon'],
-                df_station_information['data'][0][j]['capacity']
-                              ])
-    stations.append(dict(zipped))
-stations = pd.DataFrame.from_dict(stations)
-
+    station_iter = df_station_information['data'][0]
+    stations = []
+    for j in range(len(station_iter)):
+        zipped = zip(['station_name', 'station_id', 'lat', 'lon', 'capacity'], [df_station_information['data'][0][j]['name'],
+                    df_station_information['data'][0][j]['station_id'],
+                    df_station_information['data'][0][j]['lat'],
+                    df_station_information['data'][0][j]['lon'],
+                    df_station_information['data'][0][j]['capacity']
+                                  ])
+        stations.append(dict(zipped))
+    stations = pd.DataFrame.from_dict(stations)
+    return stations, df_station_status
 
 
 
@@ -37,7 +38,8 @@ stations = pd.DataFrame.from_dict(stations)
 st.write("""
 # Dock Right NY!
 """)
-#st.line_chart(df['riderCount'])
+
+stations, df_station_status = load_data()
 start_station = st.selectbox(
     'Select Start Station',
      stations['station_name'])
@@ -60,7 +62,7 @@ stop_station_status = next(item for item in stop_station_status if item['station
 
 
 map_data = pd.concat([start_station[['lat', 'lon']], stop_station[['lat', 'lon']]])
-st.map(map_data, 13)
+st.map(map_data, 12)
 
 
 
