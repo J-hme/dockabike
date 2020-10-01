@@ -32,15 +32,17 @@ def load_data():
     df_dist = pd.read_csv('distances.csv')
     return stations, df_station_status, df_dist
 
+def id_to_name(ids, stations):
+    return stations[stations.station_id == ids].station_name.to_list()[0]
 
-
-#web app
+# web app
 
 st.write("""
 # Dock Right NY!
 """)
 
 stations, df_station_status, df_dist = load_data()
+
 start_station = st.selectbox(
     'Select Start Station',
      stations['station_name'])
@@ -49,7 +51,10 @@ start_station = start_station.astype({'station_id': int})
 start_station_id = str(start_station['station_id'].to_list()[0])
 start_station_status = df_station_status['data'][0]
 start_station_status = next(item for item in start_station_status if item['station_id'] == start_station_id)
-'Pick up station has: ', start_station_status['num_bikes_available'], 'free bikes. Here is a list of suggested close by stations:'
+start_near_station_ids = df_dist.sort_values(by=start_station_id)['station_id'].astype(str)[1:6].to_list()
+start_near_station_names = [id_to_name(ids, stations) for ids in start_near_station_ids]
+'Pick up station has: ', start_station_status['num_bikes_available'], 'free bikes and high estimated outflow.' \
+'Here is a list of suggested close by stations:', start_near_station_names
 
 stop_station = st.selectbox(
     'Select Stop Station',
@@ -59,7 +64,12 @@ stop_station = stop_station.astype({'station_id': int})
 stop_station_id = str(stop_station['station_id'].to_list()[0])
 stop_station_status = df_station_status['data'][0]
 stop_station_status = next(item for item in stop_station_status if item['station_id'] == stop_station_id)
-'Drop off station has: ', stop_station_status['num_docks_available'], 'free docks'
+stop_near_station_ids = df_dist.sort_values(by=stop_station_id)['station_id'].astype(str)[1:6].to_list()
+stop_near_station_names = [id_to_name(ids, stations) for ids in stop_near_station_ids]
+'Drop off station has: ', stop_station_status['num_docks_available'], 'free docks and high estimated inflow. ' \
+                                                                      'Here is a list of suggested close by stations:',\
+stop_near_station_names
+
 
 
 map_data = pd.concat([start_station[['lat', 'lon']], stop_station[['lat', 'lon']]])
