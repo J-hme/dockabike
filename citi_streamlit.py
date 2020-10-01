@@ -29,7 +29,8 @@ def load_data():
                                   ])
         stations.append(dict(zipped))
     stations = pd.DataFrame.from_dict(stations)
-    return stations, df_station_status
+    df_dist = pd.read_csv('distances.csv')
+    return stations, df_station_status, df_dist
 
 
 
@@ -39,7 +40,7 @@ st.write("""
 # Dock Right NY!
 """)
 
-stations, df_station_status = load_data()
+stations, df_station_status, df_dist = load_data()
 start_station = st.selectbox(
     'Select Start Station',
      stations['station_name'])
