@@ -1,125 +1,157 @@
 import streamlit as st
 import pandas as pd
-import sklearn as sk
 import joblib
-from datetime import datetime
-from pytz import timezone
 
-# # date and time
-# tz = timezone('EST')
-# datetime.now(tz)
-# # Current date time in local system
-# date_time_now = datetime.now()
-#
+# In this section I read the static and real-time data from cibike API
+
+
 @st.cache
-def load_data():
-    # citibike
-    df_sys_info = pd.read_json('https://gbfs.citibikenyc.com/gbfs/en/system_information.json')
-    df_station_information = pd.read_json('https://gbfs.citibikenyc.com/gbfs/en/station_information.json') #capacity, name
-    df_station_status = pd.read_json('https://gbfs.citibikenyc.com/gbfs/en/station_status.json') # online # available
+def load_stations():
+    # This read citibike static information: capacity, name, id, lat and lon of each station and name of the station
+    df_station_information = pd.read_json('https://gbfs.citibikenyc.com/gbfs/en/station_information.json')
+    # read all the stations and store in data frame : stations
+    station_iter = len(df_station_information['data'][0])
+    station = []
+    for j in range(station_iter):
+        zipped = zip(['station_name', 'station_id', 'lat', 'lon', 'capacity'],
+                     [df_station_information['data'][0][j]['name'],
+                      df_station_information['data'][0][j]['station_id'],
+                      df_station_information['data'][0][j]['lat'],
+                      df_station_information['data'][0][j]['lon'],
+                      df_station_information['data'][0][j]['capacity']
+                      ])
+        station.append(dict(zipped))
 
-    station_iter = df_station_information['data'][0]
-    stations = []
-    for j in range(len(station_iter)):
-        zipped = zip(['station_name', 'station_id', 'lat', 'lon', 'capacity'], [df_station_information['data'][0][j]['name'],
-                    df_station_information['data'][0][j]['station_id'],
-                    df_station_information['data'][0][j]['lat'],
-                    df_station_information['data'][0][j]['lon'],
-                    df_station_information['data'][0][j]['capacity']
-                                  ])
-        stations.append(dict(zipped))
-    stations = pd.DataFrame.from_dict(stations)
+    station = pd.DataFrame.from_dict(station)
+    return station
+
+
+@st.cache
+def load_distances():
     df_dist = pd.read_csv('distances.csv')
-    return stations, df_station_status, df_dist
+    return df_dist
 
-def id_to_name(ids, stations):
-    return stations[stations.station_id == ids].station_name.to_list()[0]
 
-# web app
+@st.cache
+def load_station_realtime():
+    df_st_status = pd.read_json('https://gbfs.citibikenyc.com/gbfs/en/station_status.json') # online # available
+    return df_st_status
 
-st.write("""
-# Dock Right NY!
-""")
 
-stations, df_station_status, df_dist = load_data()
+@st.cache
+def realtime_weather():
+    request = 'https://mesonet.agron.iastate.edu/cgi-bin/request/' \
+              'asos.py?station=NYC&data=tmpf&data=relh&data=feel&data=' \
+              'sped&data=p01i&data=vsby&year1=2020&month1=9&day1=28&year2=' \
+              '2020&month2=9&day2=28&tz=America%2FNew_York&format=onlycomma&latlon=' \
+              'no&missing=M&trace=T&direct=no&report_type=1&report_type=2'
+    df_weather = pd.read_csv(f'{request}', na_values=['M', 'T'])
+    df_weather['p01i'] = df_weather['p01i'].astype(float)
+    df_weather.fillna(method='ffill')
+    df_weather['datetime'] = pd.to_datetime(df_weather['valid'])
+    df_weather['Month'] = df_weather['datetime'].dt.month
+    df_weather['Day'] = df_weather['datetime'].dt.day
+    df_weather['Hour'] = df_weather['datetime'].dt.hour
+    df_weather['Weekday'] = ((df_weather['datetime'].dt.dayofweek) // 5 == 0).astype(float)
+    df_weather = df_weather.groupby(['Month', 'Day', 'Hour', 'Weekday']).mean().reset_index()
+    weather = df_weather.tail(1)
+    weather = weather.fillna(0)
+    return weather
 
-start_station = st.selectbox(
-    'Select Start Station',
-     stations['station_name'])
+
+def id_to_name(ids, station):
+    return station[station.station_id == ids].station_name.to_list()[0]
+
+
+def find_realtime_status(all_stations, selected_station):
+    status = all_stations['data'][0]
+    status = next(item for item in status if item['station_id'] == selected_station)
+    return status
+
+
+def nearby_stations(distances, all_stations, selected_station):
+    nearby_ids = distances.sort_values(by=selected_station)['station_id'].astype(str)[1:6].to_list()
+    nearby_dis = distances.sort_values(by=selected_station)[selected_station][1:6].to_list()
+    nearby_names = [id_to_name(ids, all_stations) for ids in nearby_ids]
+    return nearby_ids, nearby_names, nearby_dis
+
+
+def make_prediction(weather, all_stations, selected_station):
+    station = all_stations.loc[all_stations['station_name'] == selected_station]
+    station = station.astype({'station_id': int})
+    result = pd.concat([weather.reset_index(), station.reset_index()], axis=1)
+    result = result.drop(['index', 'station_name', 'lat', 'lon', 'capacity'], axis=1)
+    result = result.fillna(0)
+    model_input = result.reindex(
+        ['Month', 'Day', 'Hour', 'Weekday', 'station_id', 'tmpf', 'relh', 'feel', 'sped', 'p01i', 'vsby'],
+        axis=1).values
+    filename = 'rfc_2020.joblib'
+    model = joblib.load(filename)
+    model_output = model.predict(model_input)
+    return model_output
+
+
+
+# streamlit web app title
+
+
+st.write("""# Dock Right NY!""")
+
+# load the stations names, capacity, lat and lon
+stations = load_stations() # , df_station_status, df_dist
+# streamlit web app: create a crop down menu with list of the stations to select
+start_station = st.selectbox('Select Pick Up Station', stations['station_name'])
+# The user selects station name now I need to obtain station_id
 start_station = stations.loc[stations['station_name'] == start_station]
-start_station = start_station.astype({'station_id': int})
 start_station_id = str(start_station['station_id'].to_list()[0])
-start_station_status = df_station_status['data'][0]
-start_station_status = next(item for item in start_station_status if item['station_id'] == start_station_id)
-start_near_station_ids = df_dist.sort_values(by=start_station_id)['station_id'].astype(str)[1:6].to_list()
-start_near_station_names = [id_to_name(ids, stations) for ids in start_near_station_ids]
-'Pick up station has: ', start_station_status['num_bikes_available'], 'free bikes and high estimated outflow.' \
-'Here is a list of suggested close by stations:', start_near_station_names
+# Now that I have tne station ID I can find the real-time number of available bikes and docks
+df_station_status = load_station_realtime()
+start_status = find_realtime_status(df_station_status, start_station_id)
 
-stop_station = st.selectbox(
-    'Select Stop Station',
-     stations['station_name'])
+# Now find available bikes and docks in 5 nearby stations
+df_distances = load_distances()
+start_near_ids, start_near_names, start_near_dist = nearby_stations(df_distances, stations, start_station_id)
+start_near_status = [find_realtime_status(df_station_status, ind_st)['num_bikes_available'] for ind_st in start_near_ids]
+
+# Now estimate the inflow based on historic data and current weather
+current_weather = realtime_weather()
+pred = [make_prediction(current_weather, stations, station_name) for station_name in start_near_names]
+
+# 'Pick up station has: ', start_status['num_bikes_available'], 'free bikes.' \
+
+show = pd.DataFrame()
+show['station'] = start_near_names
+show['Distance (m)'] = [round(x * 1000) for x in start_near_dist]
+show['Realtime Free Bikes'] = start_near_status
+show['Reliability'] = pred
+st.write('Alternative Pick up Stations:', show)
+
+
+
+# streamlit web app get the stop station from user
+stop_station = st.selectbox('Select Drop Off Station', stations['station_name'])
+# The user selects station name now I need to obtain station_id
 stop_station = stations.loc[stations['station_name'] == stop_station]
-stop_station = stop_station.astype({'station_id': int})
 stop_station_id = str(stop_station['station_id'].to_list()[0])
-stop_station_status = df_station_status['data'][0]
-stop_station_status = next(item for item in stop_station_status if item['station_id'] == stop_station_id)
-stop_near_station_ids = df_dist.sort_values(by=stop_station_id)['station_id'].astype(str)[1:6].to_list()
-stop_near_station_names = [id_to_name(ids, stations) for ids in stop_near_station_ids]
-'Drop off station has: ', stop_station_status['num_docks_available'], 'free docks and high estimated inflow. ' \
-                                                                      'Here is a list of suggested close by stations:',\
-stop_near_station_names
+# Now that I have tne station ID I can find the real-time number of available bikes and docks
+stop_status = find_realtime_status(df_station_status, stop_station_id)
 
+# Now find available bikes and docks in 5 nearby stations
+stop_near_ids, stop_near_names, stop_near_dist = nearby_stations(df_distances, stations, stop_station_id)
+stop_near_status = [find_realtime_status(df_station_status, ind_st)['num_docks_available'] for ind_st in stop_near_ids]
 
+# Now estimate the inflow based on historic data and current weather
+pred_stop = [make_prediction(current_weather, stations, station_name) for station_name in stop_near_names]
+
+# 'Drop off station has: ', start_status['num_bikes_available'], 'free bikes.' \
+show2 = pd.DataFrame()
+show2['station'] = stop_near_names
+show2['Distance (m)'] = [round(x * 1000) for x in stop_near_dist]
+show2['Realtime Free Docks'] = stop_near_status
+show2['Reliability'] = pred_stop
+st.write('Alternative Drop off Stations:', show2)
 
 map_data = pd.concat([start_station[['lat', 'lon']], stop_station[['lat', 'lon']]])
-st.map(map_data, 12)
+st.map(map_data)
 
-
-
-
-# weather
-request = 'https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?station=NYC&data=tmpf&data=relh&data=feel&data=sped&data=p01i&data=vsby&year1=2020&month1=9&day1=28&year2=2020&month2=9&day2=28&tz=America%2FNew_York&format=onlycomma&latlon=no&missing=M&trace=T&direct=no&report_type=1&report_type=2'
-df_weather = pd.read_csv(f'{request}', na_values=['M', 'T'])
-df_weather['p01i'] = df_weather['p01i'].astype(float)
-df_weather.fillna(method='ffill')
-df_weather['datetime'] = pd.to_datetime(df_weather['valid'])
-df_weather['Month'] = df_weather['datetime'].dt.month
-df_weather['Day'] = df_weather['datetime'].dt.day
-df_weather['Hour'] = df_weather['datetime'].dt.hour
-df_weather['Weekday'] = ((df_weather['datetime'].dt.dayofweek) // 5 == 0).astype(float)
-df_weather = df_weather.groupby(['Month', 'Day', 'Hour', 'Weekday']).mean().reset_index()
-weather = df_weather.tail(1)
-weather = weather.fillna(0)
-
-# build input to model
-result = pd.concat([weather.reset_index(), start_station.reset_index()], axis=1)
-result = result.drop(['index', 'station_name', 'lat', 'lon', 'capacity'], axis=1)
-result = result.fillna(0)
-X_start = result.reindex(['Month', 'Day', 'Hour', 'Weekday', 'station_id', 'tmpf', 'relh', 'feel', 'sped', 'p01i', 'vsby'], axis=1).values
-
-result = pd.concat([weather.reset_index(), stop_station.reset_index()], axis=1)
-result = result.drop(['index', 'station_name', 'lat', 'lon', 'capacity'], axis=1)
-result = result.fillna(0)
-X_stop = result.reindex(['Month', 'Day', 'Hour', 'Weekday', 'station_id', 'tmpf', 'relh', 'feel', 'sped', 'p01i', 'vsby'], axis=1).values
-
-
-
-# model
-#filename = 'C:/Users/javad/Documents/Python Scripts/git_folder/final_prediction2.joblib'
-filename = 'rfc_2020.joblib'
-loaded_model = joblib.load(filename)
-y_start = loaded_model.predict(X_start)
-y_stop = loaded_model.predict(X_stop)
-
-st.write('Chance of your start being empty (-1) or full (+1): ')
-st.write(y_start)
-
-st.write('Chance of your stop being empty (-1) or full (+1): ')
-st.write(y_stop)
-#40.7128° N, 74.0060
-
-#map_data = pd.DataFrame([[lat_, lon_start]], columns = ['lat', 'lon'])
-    # pd.np.random.randn(1000, 2) / [50, 50] + [40.71, -74.00],
-    # columns=['lat', 'lon'])
 
