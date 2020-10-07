@@ -4,6 +4,7 @@ import joblib
 
 # In this section I read the static and real-time data from cibike API
 
+
 @st.cache
 def load_stations():
     # This read citibike static information: capacity, name, id, lat and lon of each station and name of the station
