@@ -108,6 +108,10 @@ start_station_id = str(start_station['station_id'].to_list()[0])
 df_station_status = load_station_realtime()
 start_status = find_realtime_status(df_station_status, start_station_id)
 
+'Pick up station has: ', start_status['num_bikes_available'], 'free bikes.'
+
+
+
 # Now find available bikes and docks in 5 nearby stations
 df_distances = load_distances()
 start_near_ids, start_near_names, start_near_dist = nearby_stations(df_distances, stations, start_station_id)
@@ -117,7 +121,6 @@ start_near_status = [find_realtime_status(df_station_status, ind_st)['num_bikes_
 current_weather = realtime_weather()
 pred = [make_prediction(current_weather, stations, station_name) for station_name in start_near_names]
 
-# 'Pick up station has: ', start_status['num_bikes_available'], 'free bikes.' \
 
 show = pd.DataFrame()
 show['station'] = start_near_names
@@ -135,6 +138,7 @@ stop_station = stations.loc[stations['station_name'] == stop_station]
 stop_station_id = str(stop_station['station_id'].to_list()[0])
 # Now that I have tne station ID I can find the real-time number of available bikes and docks
 stop_status = find_realtime_status(df_station_status, stop_station_id)
+'Drop off station has: ', stop_status['num_docks_available'], 'free docks.' \
 
 # Now find available bikes and docks in 5 nearby stations
 stop_near_ids, stop_near_names, stop_near_dist = nearby_stations(df_distances, stations, stop_station_id)
@@ -143,7 +147,6 @@ stop_near_status = [find_realtime_status(df_station_status, ind_st)['num_docks_a
 # Now estimate the inflow based on historic data and current weather
 pred_stop = [make_prediction(current_weather, stations, station_name) for station_name in stop_near_names]
 
-# 'Drop off station has: ', start_status['num_bikes_available'], 'free bikes.' \
 show2 = pd.DataFrame()
 show2['station'] = stop_near_names
 show2['Distance (m)'] = [round(x * 1000) for x in stop_near_dist]
@@ -154,8 +157,3 @@ st.write('Alternative Drop off Stations:', show2)
 map_data = pd.concat([start_station[['lat', 'lon']], stop_station[['lat', 'lon']]])
 st.map(map_data)
 
-# st.pydeck_chart(pdk.Deck(
-#     map_style="mapbox://styles/mapbox/light-v9",
-#     initial_view_state={"latitude": 41.979, "longitude": -74.218, "zoom": 9},
-#     # layers=ride_layers,
-# ))
