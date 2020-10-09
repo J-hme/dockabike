@@ -90,6 +90,29 @@ def make_prediction(weather, all_stations, selected_station):
     model_output = model.predict(model_input)
     return model_output
 
+def station_reliability_start(free_units, flow):
+
+    if (flow < 0 and abs(flow) <= 0.5 * free_units):
+        reliability = 'good to pick up bikes'
+    elif (flow < 0 and abs(flow) > .5 * free_units and abs(flow) <= .8 * free_units):
+        reliability = 'running out of bikes'
+    elif (flow < 0 and abs(flow) > .8 * free_units) or (free_units < 2):
+        reliability = 'running out fast'
+    else:
+        reliability = 'good to pick up bikes'
+    return reliability
+
+
+def station_reliability_stop(free_units, flow):
+    if (flow > 0 and abs(flow) <= .5 * free_units):
+        reliability = 'good to dock in'
+    elif (flow > 0 and abs(flow) > .5 * free_units and abs(flow) <= .8 * free_units):
+        reliability = 'docks filling up'
+    elif (flow > 0 and abs(flow) > .8 ) or (free_units < 1):
+        reliability = 'filling up fast'
+    else:
+        reliability = 'good to dock in'
+    return reliability
 
 
 # streamlit web app title
@@ -100,9 +123,9 @@ st.write("""# Dock Right NY!""")
 # load the stations names, capacity, lat and lon
 stations = load_stations() # , df_station_status, df_dist
 # streamlit web app: create a crop down menu with list of the stations to select
-start_station = st.selectbox('Select Pick Up Station', stations['station_name'])
+start_station_name = st.selectbox('Select Pick Up Station', stations['station_name'])
 # The user selects station name now I need to obtain station_id
-start_station = stations.loc[stations['station_name'] == start_station]
+start_station = stations.loc[stations['station_name'] == start_station_name]
 start_station_id = str(start_station['station_id'].to_list()[0])
 # Now that I have tne station ID I can find the real-time number of available bikes and docks
 df_station_status = load_station_realtime()
@@ -110,49 +133,64 @@ start_status = find_realtime_status(df_station_status, start_station_id)
 
 'Pick up station has: ', start_status['num_bikes_available'], 'free bikes.'
 
-
-
-# Now find available bikes and docks in 5 nearby stations
-df_distances = load_distances()
-start_near_ids, start_near_names, start_near_dist = nearby_stations(df_distances, stations, start_station_id)
-start_near_status = [find_realtime_status(df_station_status, ind_st)['num_bikes_available'] for ind_st in start_near_ids]
-
-# Now estimate the inflow based on historic data and current weather
+# Now estimate flow and calculate reliability
 current_weather = realtime_weather()
-pred = [make_prediction(current_weather, stations, station_name) for station_name in start_near_names]
+pred_sel_start = make_prediction(current_weather, stations, start_station_name)
+start_reliablity = station_reliability_start(start_status['num_bikes_available'], pred_sel_start)
+'This station is:', start_reliablity, 'within the next hour'
 
 
-show = pd.DataFrame()
-show['station'] = start_near_names
-show['Distance (m)'] = [round(x * 1000) for x in start_near_dist]
-show['Realtime Free Bikes'] = start_near_status
-show['Reliability'] = pred
-st.write('Alternative Pick up Stations:', show)
+if start_reliablity != 'good to pick up bikes':
+    # Now find available bikes and docks in 5 nearby stations
+    df_distances = load_distances()
+    start_near_ids, start_near_names, start_near_dist = nearby_stations(df_distances, stations, start_station_id)
+    start_near_status = [find_realtime_status(df_station_status, ind_st)['num_bikes_available'] for ind_st in
+                         start_near_ids]
+    # Now estimate the inflow based on historic data and current weather
+    pred = [make_prediction(current_weather, stations, station_name) for station_name in start_near_names]
+    reliab = []
+    for i in range(len(pred)):
+        reliab.append(station_reliability_start(pred[i], start_near_status[i]))
+    show = pd.DataFrame()
+    show['station'] = start_near_names
+    show['Distance (m)'] = [round(x * 1000) for x in start_near_dist]
+    show['Realtime Free Bikes'] = start_near_status
+    show['Reliability'] = reliab#pred
+    st.write('Alternative Pick up Stations:', show)
 
 
 
 # streamlit web app get the stop station from user
-stop_station = st.selectbox('Select Drop Off Station', stations['station_name'])
+stop_station_name = st.selectbox('Select Drop Off Station', stations['station_name'])
 # The user selects station name now I need to obtain station_id
-stop_station = stations.loc[stations['station_name'] == stop_station]
+stop_station = stations.loc[stations['station_name'] == stop_station_name]
 stop_station_id = str(stop_station['station_id'].to_list()[0])
 # Now that I have tne station ID I can find the real-time number of available bikes and docks
 stop_status = find_realtime_status(df_station_status, stop_station_id)
 'Drop off station has: ', stop_status['num_docks_available'], 'free docks.' \
+# Now estimate flow and calculate reliability
+pred_sel_stop = make_prediction(current_weather, stations, stop_station_name)
+stop_reliability = station_reliability_stop(stop_status['num_docks_available'], pred_sel_stop)
+'This station is:', stop_reliability, 'within the next hour'
 
-# Now find available bikes and docks in 5 nearby stations
-stop_near_ids, stop_near_names, stop_near_dist = nearby_stations(df_distances, stations, stop_station_id)
-stop_near_status = [find_realtime_status(df_station_status, ind_st)['num_docks_available'] for ind_st in stop_near_ids]
+if stop_reliability != 'good to dock in':
+    df_distances = load_distances()
+    # Now find available bikes and docks in 5 nearby stations
+    stop_near_ids, stop_near_names, stop_near_dist = nearby_stations(df_distances, stations, stop_station_id)
+    stop_near_status = [find_realtime_status(df_station_status, ind_st)['num_docks_available'] for ind_st in stop_near_ids]
 
-# Now estimate the inflow based on historic data and current weather
-pred_stop = [make_prediction(current_weather, stations, station_name) for station_name in stop_near_names]
+    # Now estimate the inflow based on historic data and current weather
+    pred_stop = [make_prediction(current_weather, stations, station_name) for station_name in stop_near_names]
+    reliab_stop = []
+    for i in range(len(pred_stop)):
+        reliab_stop.append(station_reliability_stop(pred_stop[i], stop_near_status[i]))
 
-show2 = pd.DataFrame()
-show2['station'] = stop_near_names
-show2['Distance (m)'] = [round(x * 1000) for x in stop_near_dist]
-show2['Realtime Free Docks'] = stop_near_status
-show2['Reliability'] = pred_stop
-st.write('Alternative Drop off Stations:', show2)
+    show2 = pd.DataFrame()
+    show2['station'] = stop_near_names
+    show2['Distance (m)'] = [round(x * 1000) for x in stop_near_dist]
+    show2['Realtime Free Docks'] = stop_near_status
+    show2['Reliability'] = reliab_stop#pred_stop
+    st.write('Alternative Drop off Stations:', show2)
 
 map_data = pd.concat([start_station[['lat', 'lon']], stop_station[['lat', 'lon']]])
 st.map(map_data)
